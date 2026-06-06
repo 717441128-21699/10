@@ -172,8 +172,19 @@ export default function Leave() {
   const handleApprove = async () => {
     if (!approveDialog || !user) return;
     try {
-      await leaveApi.approve(approveDialog.id, user.id);
-      showToast('已批准', 'success');
+      const result = await leaveApi.approve(approveDialog.id, user.id) as LeaveRecord & {
+        notifications?: {
+          parentNotified: boolean;
+          teacherNotified: boolean;
+          teacherName?: string;
+          message: string;
+        };
+      };
+      if (result.notifications) {
+        showToast(result.notifications.message, 'success');
+      } else {
+        showToast('已批准', 'success');
+      }
       setApproveDialog(null);
       fetchData();
     } catch {
@@ -500,19 +511,19 @@ export default function Leave() {
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-ink-600">请假天数</span>
+                    <span className="text-ink-600">请假天数（工作日）</span>
                     <span className="font-medium text-ink-800">
                       {approveDialog.feeAdjustment?.days || 0} 天
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-ink-600">餐费扣减</span>
+                    <span className="text-ink-600">餐费扣减（¥25/天）</span>
                     <span className="text-danger-600 font-medium">
                       -¥{approveDialog.feeAdjustment?.mealFeeDeduction?.toFixed(2) || '0.00'}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-ink-600">保教费扣减</span>
+                    <span className="text-ink-600">保教费扣减（¥50/天）</span>
                     <span className="text-danger-600 font-medium">
                       -¥{approveDialog.feeAdjustment?.tuitionDeduction?.toFixed(2) || '0.00'}
                     </span>
@@ -524,6 +535,29 @@ export default function Leave() {
                     </span>
                   </div>
                 </div>
+              </div>
+
+              <div className="p-4 bg-gradient-to-br from-accent-50 to-primary-50 rounded-xl border border-accent-100">
+                <div className="flex items-center gap-2 mb-2">
+                  <User className="w-4 h-4 text-accent-600" />
+                  <h4 className="text-sm font-semibold text-ink-900">
+                    自动通知
+                  </h4>
+                </div>
+                <ul className="text-sm text-ink-600 space-y-1">
+                  <li className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-success-500" />
+                    将向家长 {approveDialog.parentName} 发送批准通知
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-success-500" />
+                    将向班级老师发送通知，提醒调整当日活动安排
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-success-500" />
+                    本月账单将自动扣减餐费和保教费
+                  </li>
+                </ul>
               </div>
             </div>
             <div className="p-5 border-t border-ink-100 flex justify-end gap-2">

@@ -12,6 +12,8 @@ import {
   DollarSign,
   AlertOctagon,
   PauseCircle,
+  Ban,
+  ShieldAlert,
 } from 'lucide-react';
 import { billingApi, settingsApi } from '@/api';
 import { useAuthStore } from '@/store/authStore';
@@ -335,6 +337,28 @@ export default function Billing() {
         </div>
       </div>
 
+      {summary.suspended > 0 && isAdminOrFinance && (
+        <div className="card bg-gradient-to-r from-danger-50 to-warning-50 border-danger-200 p-5 flex items-start gap-3 animate-pulse-soft">
+          <div className="w-12 h-12 rounded-2xl bg-danger-500 text-white flex items-center justify-center flex-shrink-0 shadow-md">
+            <ShieldAlert className="w-6 h-6" />
+          </div>
+          <div className="flex-1">
+            <p className="font-semibold text-danger-800 text-base">
+              当前有 {summary.suspended} 名幼儿因欠费超过 15 天被暂停入园
+            </p>
+            <p className="text-sm text-danger-600 mt-1">
+              系统已自动将幼儿状态设置为"暂停入园"。请联系家长完成缴费或点击"恢复入园"解除限制。
+            </p>
+          </div>
+          <button
+            onClick={() => setTabs('suspended')}
+            className="btn-danger !py-2 !px-4 text-sm"
+          >
+            查看暂停名单
+          </button>
+        </div>
+      )}
+
       <div className="card p-0 overflow-hidden">
         <div className="flex border-b border-ink-100 px-4">
           {([
@@ -396,9 +420,19 @@ export default function Billing() {
               <tbody className="divide-y divide-ink-100">
                 {filteredBills.map((bill) => {
                   const isExpanded = expandedRows.has(bill.id);
+                  const isSeverelyOverdue = bill.status !== 'paid' && (bill.overdueDays ?? 0) >= 15;
+                  const isSuspended = bill.status === 'suspended';
                   return (
                     <>
-                      <tr key={bill.id} className={cn('hover:bg-ink-50/50 transition-colors', bill.status === 'suspended' && 'bg-danger-50/30')}>
+                      <tr
+                        key={bill.id}
+                        className={cn(
+                          'transition-colors',
+                          isSuspended && 'bg-danger-50/60 hover:bg-danger-50',
+                          isSeverelyOverdue && !isSuspended && 'bg-warning-50/60 hover:bg-warning-50',
+                          !isSuspended && !isSeverelyOverdue && 'hover:bg-ink-50/50'
+                        )}
+                      >
                         <td className="table-cell">
                           <button
                             onClick={() => toggleRow(bill.id)}
@@ -407,7 +441,16 @@ export default function Billing() {
                             <ChevronDown className={cn('w-4 h-4 transition-transform', isExpanded && 'rotate-180')} />
                           </button>
                         </td>
-                        <td className="table-cell font-medium text-ink-900">{bill.childName}</td>
+                        <td className="table-cell">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-ink-900">{bill.childName}</span>
+                            {isSuspended && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-white bg-danger-500 px-2 py-0.5 rounded-full animate-pulse">
+                                <Ban className="w-3 h-3" /> 暂停入园
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="table-cell text-ink-600">-</td>
                         <td className="table-cell text-ink-600">{bill.month}</td>
                         <td className="table-cell font-semibold text-ink-900">¥{bill.totalAmount.toFixed(2)}</td>
@@ -416,16 +459,29 @@ export default function Billing() {
                         <td className="table-cell text-ink-600">{bill.dueDate}</td>
                         {tabs === 'overdue' && (
                           <td className="table-cell">
-                            <span className={cn(
-                              'font-semibold',
-                              bill.overdueDays > 30 ? 'text-danger-600' : 'text-warning-600'
-                            )}>
+                            <span
+                              className={cn(
+                                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold',
+                                bill.overdueDays >= 15
+                                  ? 'bg-danger-100 text-danger-700'
+                                  : bill.overdueDays > 30
+                                  ? 'bg-danger-100 text-danger-700'
+                                  : 'bg-warning-100 text-warning-700'
+                              )}
+                            >
+                              {bill.overdueDays >= 15 && <Ban className="w-3 h-3" />}
                               {bill.overdueDays} 天
+                              {bill.overdueDays >= 15 && <span className="text-[10px] ml-1">（≥15天将暂停）</span>}
                             </span>
                           </td>
                         )}
                         {tabs === 'suspended' && (
-                          <td className="table-cell text-danger-600">{bill.suspendedAt}</td>
+                          <td className="table-cell">
+                            <div>
+                              <p className="text-danger-600 font-medium text-sm">{bill.suspendedAt}</p>
+                              <p className="text-xs text-danger-500">欠费超过15天自动暂停</p>
+                            </div>
+                          </td>
                         )}
                         <td className="table-cell">
                           <div className="flex items-center justify-end gap-1.5">
@@ -458,9 +514,20 @@ export default function Billing() {
                         </td>
                       </tr>
                       {isExpanded && (
-                        <tr key={`${bill.id}-detail`} className="bg-ink-50/50">
+                        <tr key={`${bill.id}-detail`} className={cn(isSuspended ? 'bg-danger-50/30' : 'bg-ink-50/50')}>
                           <td></td>
                           <td colSpan={tabs === 'overdue' || tabs === 'suspended' ? 8 : 7} className="py-4 px-4">
+                            {isSuspended && (
+                              <div className="mb-3 p-3 bg-danger-50 rounded-xl border border-danger-200 flex items-start gap-2">
+                                <ShieldAlert className="w-5 h-5 text-danger-500 flex-shrink-0 mt-0.5" />
+                                <div className="flex-1">
+                                  <p className="text-sm font-semibold text-danger-800">该幼儿已被暂停入园</p>
+                                  <p className="text-xs text-danger-600 mt-0.5">
+                                    原因：账单欠费超过 15 天。请尽快完成缴费或联系管理员恢复入园资格。
+                                  </p>
+                                </div>
+                              </div>
+                            )}
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                               {bill.items.map((item, idx) => (
                                 <div key={idx} className="bg-white rounded-xl p-3 border border-ink-100">

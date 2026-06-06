@@ -41,10 +41,22 @@ router.get('/', verifyToken, (req: Request, res: Response): void => {
     if (bill.status !== 'suspended' && overdueDays >= 15) {
       bill.status = 'suspended' as BillStatus
       bill.suspendedAt = formatDateTime(new Date())
+      const child = children.find(c => c.id === bill.childId)
+      if (child && child.status === 'active') {
+        child.status = 'suspended'
+      }
     }
   }
 
-  res.json(success(filtered))
+  const result = filtered.map(bill => {
+    const child = children.find(c => c.id === bill.childId)
+    return {
+      ...bill,
+      childStatus: child?.status,
+    }
+  })
+
+  res.json(success(result))
 })
 
 router.get('/suspended/list', verifyToken, requireRole('super_admin', 'principal', 'finance'), (req: Request, res: Response): void => {
@@ -62,7 +74,8 @@ router.get('/:id', verifyToken, (req: Request, res: Response): void => {
   }
 
   bill.overdueDays = calculateOverdueDays(bill.dueDate)
-  res.json(success(bill))
+  const child = children.find(c => c.id === bill.childId)
+  res.json(success({ ...bill, childStatus: child?.status }))
 })
 
 router.post('/', verifyToken, (req: Request, res: Response): void => {
@@ -122,12 +135,18 @@ router.put('/:id/pay', verifyToken, (req: Request, res: Response): void => {
     bill.paidAt = formatDateTime(new Date())
     if (wasSuspended) {
       bill.suspendedAt = undefined
+      const child = children.find(c => c.id === bill.childId)
+      const otherSuspended = bills.filter(b => b.childId === bill.childId && b.id !== bill.id && b.status === 'suspended')
+      if (child && child.status === 'suspended' && otherSuspended.length === 0) {
+        child.status = 'active'
+      }
     }
   } else if (bill.paidAmount > 0) {
     bill.status = 'partial' as BillStatus
   }
 
-  res.json(success(bill, '支付成功'))
+  const child = children.find(c => c.id === bill.childId)
+  res.json(success({ ...bill, childStatus: child?.status }, '支付成功'))
 })
 
 router.post('/:id/restore', verifyToken, requireRole('super_admin', 'principal'), (req: Request, res: Response): void => {
@@ -147,7 +166,13 @@ router.post('/:id/restore', verifyToken, requireRole('super_admin', 'principal')
   bill.status = 'unpaid' as BillStatus
   bill.suspendedAt = undefined
 
-  res.json(success(bill, '账单已恢复'))
+  const child = children.find(c => c.id === bill.childId)
+  const otherSuspended = bills.filter(b => b.childId === bill.childId && b.id !== bill.id && b.status === 'suspended')
+  if (child && child.status === 'suspended' && otherSuspended.length === 0) {
+    child.status = 'active'
+  }
+
+  res.json(success({ ...bill, childStatus: child?.status }, '账单已恢复'))
 })
 
 export default router

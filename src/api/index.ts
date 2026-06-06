@@ -116,6 +116,7 @@ export const leaveApi = {
 interface CreateMorningCheckPayload {
   childId: number;
   teacherId: number;
+  classId?: number;
   temperature: number;
   oralCheck: string;
   handCheck: string;

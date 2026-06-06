@@ -150,6 +150,9 @@ function DetailDialog({
                 <h4 className="text-sm font-semibold text-ink-900 flex items-center gap-2">
                   <Package className="w-4 h-4 text-warning-500" />
                   物资清单
+                  <span className="inline-flex items-center gap-1 text-xs font-normal text-ink-500 bg-warm-100 px-2 py-0.5 rounded-full">
+                    当前报名 {activity.registrations?.length || 0} 人
+                  </span>
                 </h4>
                 <button onClick={onExportMaterials} className="btn-outline !py-1.5 !px-3 text-sm">
                   <Download className="w-4 h-4" />
@@ -163,7 +166,10 @@ function DetailDialog({
                       <th className="px-4 py-2.5 text-left text-xs font-semibold text-ink-600">物资名</th>
                       <th className="px-4 py-2.5 text-center text-xs font-semibold text-ink-600">每人数量</th>
                       <th className="px-4 py-2.5 text-center text-xs font-semibold text-ink-600">单位</th>
-                      <th className="px-4 py-2.5 text-center text-xs font-semibold text-ink-600">总数量</th>
+                      <th className="px-4 py-2.5 text-center text-xs font-semibold text-ink-600">
+                        总需求量
+                        <span className="block text-[10px] font-normal text-ink-400">= 每人 × 报名人数</span>
+                      </th>
                       <th className="px-4 py-2.5 text-left text-xs font-semibold text-ink-600">备注</th>
                     </tr>
                   </thead>
@@ -173,7 +179,12 @@ function DetailDialog({
                         <td className="px-4 py-2.5 text-sm font-medium text-ink-900">{m.name}</td>
                         <td className="px-4 py-2.5 text-sm text-center text-ink-700">{m.quantityPerPerson}</td>
                         <td className="px-4 py-2.5 text-sm text-center text-ink-700">{m.unit}</td>
-                        <td className="px-4 py-2.5 text-sm text-center font-semibold text-primary-600">{m.totalQuantity}</td>
+                        <td className="px-4 py-2.5 text-sm text-center">
+                          <span className="font-semibold text-primary-600">{m.totalQuantity}</span>
+                          <span className="block text-[10px] text-ink-400">
+                            {m.quantityPerPerson} × {activity.registrations?.length || 0}
+                          </span>
+                        </td>
                         <td className="px-4 py-2.5 text-sm text-ink-500">{m.note || '-'}</td>
                       </tr>
                     ))}
@@ -677,6 +688,15 @@ export default function Activities() {
     }
   };
 
+  const handleOpenDetail = async (activity: Activity) => {
+    try {
+      const fresh = await activitiesApi.detail(activity.id);
+      setSelectedActivity(fresh);
+    } catch (e) {
+      setSelectedActivity(activity);
+    }
+  };
+
   const handleRegister = async (childId: number) => {
     if (!selectedActivity || !user) return;
     try {
@@ -711,7 +731,30 @@ export default function Activities() {
   const handleExportMaterials = async () => {
     if (!selectedActivity) return;
     try {
-      showToast('物资清单导出成功', 'success');
+      const fresh = await activitiesApi.detail(selectedActivity.id);
+      setSelectedActivity(fresh);
+      const header = ['物资名称', '每人数量', '单位', '报名人数', '总需求量', '备注'];
+      const rows = (fresh.materials || []).map((m) => [
+        m.name,
+        String(m.quantityPerPerson),
+        m.unit,
+        String(fresh.registrations?.length || 0),
+        String(m.totalQuantity),
+        m.note || '',
+      ]);
+      const csv = [header, ...rows]
+        .map((r) => r.map((cell) => `"${(cell || '').replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `活动物资清单_${fresh.title}_${fresh.date}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast('物资清单已导出为CSV', 'success');
     } catch (e) {
       showToast('导出失败', 'error');
     }
@@ -762,7 +805,7 @@ export default function Activities() {
                 activity={activity}
                 isParent={isParent}
                 myChildrenIds={myChildrenIds}
-                onClick={() => setSelectedActivity(activity)}
+                onClick={() => handleOpenDetail(activity)}
               />
             </div>
           ))}

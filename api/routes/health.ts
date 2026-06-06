@@ -61,12 +61,12 @@ function calcAlertLevel(
     item => item === 'abnormal'
   ).length
 
-  if (temperature >= 38.5) {
+  if (temperature >= 38) {
     return 'danger'
   }
 
   if (temperature >= 37.5 || abnormalCount > 0) {
-    if (abnormalCount >= 3 || temperature >= 38.5) {
+    if (abnormalCount >= 3) {
       return 'danger'
     }
     return 'warning'
@@ -155,6 +155,16 @@ router.post('/morning-checks', verifyToken, (req: Request, res: Response): void 
 
   morning_checks.push(newCheck)
 
+  let notifications: {
+    level: HealthAlertLevel
+    parentNotified: boolean
+    principalNotified: boolean
+    parentNames: string[]
+    principalNames: string[]
+    trackingCreated: boolean
+    message: string
+  } | undefined
+
   if (alertLevel === 'warning' || alertLevel === 'danger') {
     const initialRecord: TrackingRecord = {
       id: nextRecordId(),
@@ -175,9 +185,35 @@ router.post('/morning-checks', verifyToken, (req: Request, res: Response): void 
     }
 
     health_trackings.push(newTracking)
+
+    const parentNames = child?.guardians?.map(g => g.name) || []
+    const campusId = child?.campusId ?? cls?.campusId
+    const principalNames = users
+      .filter(u => u.role === 'principal' && (!campusId || u.campusId === campusId))
+      .map(u => u.name)
+
+    const abnormalItems: string[] = []
+    if (temperature >= 37.5) abnormalItems.push(`体温 ${temperature.toFixed(1)}°C`)
+    if (oralCheck === 'abnormal') abnormalItems.push('口腔异常')
+    if (handCheck === 'abnormal') abnormalItems.push('手部异常')
+    if (skinCheck === 'abnormal') abnormalItems.push('皮肤异常')
+    if (spiritCheck === 'abnormal') abnormalItems.push('精神异常')
+
+    notifications = {
+      level: alertLevel,
+      parentNotified: true,
+      principalNotified: alertLevel === 'danger',
+      parentNames,
+      principalNames,
+      trackingCreated: true,
+      message: `【晨检${alertLevel === 'danger' ? '高危' : '预警'}】${child?.name || '该幼儿'}：${abnormalItems.join('、')}。已通知家长${alertLevel === 'danger' ? '和园长' : ''}，并创建健康追踪记录。`,
+    }
   }
 
-  res.json(success(newCheck, '晨检记录创建成功'))
+  res.json(success({
+    ...newCheck,
+    notifications,
+  }, '晨检记录创建成功'))
 })
 
 router.get('/trackings', verifyToken, (req: Request, res: Response): void => {

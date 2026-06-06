@@ -120,6 +120,9 @@ router.post('/verify', verifyToken, async (req: Request, res: Response): Promise
 
     let record: PickupRecord
     let warningMessage: string | undefined
+    let warningLevel: 'warning' | 'danger' | undefined
+    let guardianInfo: { id: number; name: string; relation: string; phone: string; photo: string } | undefined
+    let childInfo: { id: number; name: string; className?: string } | undefined
 
     if (body.code) {
       const now = new Date()
@@ -137,6 +140,26 @@ router.post('/verify', verifyToken, async (req: Request, res: Response): Promise
       const child = children.find(c => c.id === validCode.childId)
       const guardian = child?.guardians.find((g: Guardian) => g.id === validCode.guardianId)
 
+      guardianInfo = guardian ? {
+        id: guardian.id,
+        name: guardian.name,
+        relation: guardian.relation,
+        phone: guardian.phone,
+        photo: guardian.photo,
+      } : undefined
+
+      childInfo = child ? {
+        id: child.id,
+        name: child.name,
+        className: child.className,
+      } : undefined
+
+      const isAbnormal = body.isAbnormal ?? body.photoMatch === false
+      if (isAbnormal) {
+        warningLevel = body.photoMatch === false ? 'danger' : 'warning'
+        warningMessage = body.abnormalNote || (body.photoMatch === false ? '照片比对不通过，请人工核验！' : '本次接送存在异常，请关注')
+      }
+
       record = {
         id: getNextPickupRecordId(),
         childId: validCode.childId,
@@ -144,8 +167,9 @@ router.post('/verify', verifyToken, async (req: Request, res: Response): Promise
         guardianId: validCode.guardianId,
         guardianName: guardian?.name ?? validCode.guardianName,
         guardianPhoto: guardian?.photo ?? validCode.guardianPhoto,
-        photoMatch: true,
-        isAbnormal: false,
+        photoMatch: body.photoMatch ?? true,
+        isAbnormal,
+        abnormalNote: body.abnormalNote,
         operatorId: req.user?.id,
         createdAt: formatDateTime(new Date()),
       }
@@ -159,8 +183,23 @@ router.post('/verify', verifyToken, async (req: Request, res: Response): Promise
       const guardian = child.guardians.find((g: Guardian) => g.id === body.guardianId)
       const isAbnormal = body.isAbnormal ?? false
 
-      if (isAbnormal) {
-        warningMessage = body.abnormalNote || '本次接送存在异常，请关注'
+      guardianInfo = guardian ? {
+        id: guardian.id,
+        name: guardian.name,
+        relation: guardian.relation,
+        phone: guardian.phone,
+        photo: guardian.photo,
+      } : undefined
+
+      childInfo = {
+        id: child.id,
+        name: child.name,
+        className: child.className,
+      }
+
+      if (isAbnormal || body.photoMatch === false) {
+        warningLevel = body.photoMatch === false ? 'danger' : 'warning'
+        warningMessage = body.abnormalNote || (body.photoMatch === false ? '照片比对不通过，请人工核验！' : '本次接送存在异常，请关注')
       }
 
       record = {
@@ -187,11 +226,20 @@ router.post('/verify', verifyToken, async (req: Request, res: Response): Promise
       res.json({
         code: 200,
         message: warningMessage,
-        data: record,
         warning: true,
+        warningLevel,
+        data: {
+          ...record,
+          guardianInfo,
+          childInfo,
+        },
       })
     } else {
-      res.json(success(record, '接送验证成功'))
+      res.json(success({
+        ...record,
+        guardianInfo,
+        childInfo,
+      }, '接送验证成功，请核对照片。'))
     }
   } catch (err) {
     res.status(500).json(error('接送验证失败'))

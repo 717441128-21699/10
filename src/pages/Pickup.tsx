@@ -305,9 +305,26 @@ export default function Pickup() {
     setVerifying(true);
     setVerifyResult(null);
     try {
-      const record = await pickupApi.verify({ code: verifyInput.trim() });
-      setVerifyResult({ success: true, record });
-      showToast('核验成功', 'success');
+      const record = (await pickupApi.verify({ code: verifyInput.trim() })) as PickupRecord & {
+        guardianInfo?: { id: number; name: string; relation: string; phone: string; photo: string };
+        childInfo?: { id: number; name: string; className?: string };
+      };
+
+      const hasWarning = !record.photoMatch || record.isAbnormal;
+
+      setVerifyResult({
+        success: !hasWarning,
+        record,
+        message: hasWarning
+          ? (record.abnormalNote || (record.photoMatch === false ? '照片比对不通过' : '接送存在异常'))
+          : undefined,
+      });
+
+      if (hasWarning) {
+        showToast(record.photoMatch === false ? '照片比对不通过！请人工核验' : '接送存在异常，请关注', 'error');
+      } else {
+        showToast('核验成功，请核对照片', 'success');
+      }
       setVerifyInput('');
       fetchRecords();
     } catch (e: unknown) {
@@ -471,25 +488,110 @@ export default function Pickup() {
                 {verifyResult && (
                   <div
                     className={cn(
-                      'mt-4 p-4 rounded-2xl animate-scale-in',
+                      'mt-4 p-5 rounded-2xl animate-scale-in',
                       verifyResult.success ? 'bg-success-50 border border-success-200' : 'bg-danger-50 border border-danger-200'
                     )}
                   >
                     {verifyResult.success && verifyResult.record ? (
                       <div>
-                        <div className="flex items-center gap-2 mb-3">
-                          <CheckCircle className="w-5 h-5 text-success-500" />
-                          <span className="font-semibold text-success-700">核验成功</span>
+                        <div className="flex items-center gap-2 mb-4">
+                          <CheckCircle className="w-5 h-5 text-success-600" />
+                          <span className="font-semibold text-success-700 text-base">核验成功</span>
+                          <span className="ml-auto text-xs text-success-600 bg-success-100 px-2 py-1 rounded-full">请核对照片</span>
                         </div>
-                        <div className="space-y-2 text-sm">
-                          <p className="text-ink-700">
-                            <span className="text-ink-500">幼儿：</span>
-                            <span className="font-medium">{verifyResult.record.childName}</span>
-                          </p>
-                          <p className="text-ink-700">
-                            <span className="text-ink-500">接送人：</span>
-                            <span className="font-medium">{verifyResult.record.guardianName}</span>
-                          </p>
+                        <div className="flex items-start gap-5">
+                          <div className="flex flex-col items-center">
+                            <div className="relative">
+                              {verifyResult.record.guardianPhoto ? (
+                                <img
+                                  src={verifyResult.record.guardianPhoto}
+                                  alt={verifyResult.record.guardianName || '接送人'}
+                                  className="w-28 h-28 rounded-2xl object-cover border-4 border-success-300 shadow-md"
+                                />
+                              ) : (
+                                <div className="w-28 h-28 rounded-2xl bg-gradient-to-br from-primary-400 to-accent-400 flex items-center justify-center text-white font-bold text-2xl border-4 border-success-300">
+                                  {(verifyResult.record.guardianName || '?').charAt(0)}
+                                </div>
+                              )}
+                              <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-success-500 text-white flex items-center justify-center shadow-md">
+                                <UserCheck className="w-4 h-4" />
+                              </div>
+                            </div>
+                            <p className="text-xs text-ink-500 mt-3">登记接送人照片</p>
+                          </div>
+                          <div className="flex-1 space-y-2.5 text-sm pt-1">
+                            <div className="flex items-center">
+                              <span className="text-ink-500 w-16">幼儿：</span>
+                              <span className="font-semibold text-ink-900 text-base">{verifyResult.record.childName}</span>
+                            </div>
+                            <div className="flex items-center">
+                              <span className="text-ink-500 w-16">接送人：</span>
+                              <span className="font-semibold text-ink-900">{verifyResult.record.guardianName}</span>
+                            </div>
+                            <div className="flex items-center">
+                              <span className="text-ink-500 w-16">照片比对：</span>
+                              <span className="inline-flex items-center gap-1 text-success-700 font-medium">
+                                <CheckCircle className="w-4 h-4" /> 已匹配
+                              </span>
+                            </div>
+                            <div className="flex items-center">
+                              <span className="text-ink-500 w-16">核验时间：</span>
+                              <span className="text-ink-700">{new Date(verifyResult.record.createdAt).toLocaleTimeString('zh-CN')}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : verifyResult.record && !verifyResult.success ? (
+                      <div>
+                        <div className="flex items-center gap-2 mb-4">
+                          <ShieldAlert className="w-5 h-5 text-danger-600" />
+                          <span className="font-semibold text-danger-700 text-base">核验异常</span>
+                          <span className="ml-auto text-xs text-white bg-danger-500 px-2 py-1 rounded-full animate-pulse">需要人工处理</span>
+                        </div>
+                        <div className="flex items-start gap-5">
+                          <div className="flex flex-col items-center">
+                            <div className="relative">
+                              {verifyResult.record.guardianPhoto ? (
+                                <img
+                                  src={verifyResult.record.guardianPhoto}
+                                  alt={verifyResult.record.guardianName || '接送人'}
+                                  className="w-28 h-28 rounded-2xl object-cover border-4 border-danger-300 shadow-md grayscale"
+                                />
+                              ) : (
+                                <div className="w-28 h-28 rounded-2xl bg-gradient-to-br from-ink-400 to-ink-500 flex items-center justify-center text-white font-bold text-2xl border-4 border-danger-300">
+                                  {(verifyResult.record.guardianName || '?').charAt(0)}
+                                </div>
+                              )}
+                              <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-danger-500 text-white flex items-center justify-center shadow-md">
+                                <XCircle className="w-4 h-4" />
+                              </div>
+                            </div>
+                            <p className="text-xs text-danger-600 mt-3 font-medium">⚠️ 照片比对不通过</p>
+                          </div>
+                          <div className="flex-1 space-y-2.5 text-sm pt-1">
+                            <div className="flex items-center">
+                              <span className="text-ink-500 w-16">幼儿：</span>
+                              <span className="font-semibold text-ink-900 text-base">{verifyResult.record.childName}</span>
+                            </div>
+                            <div className="flex items-center">
+                              <span className="text-ink-500 w-16">接送人：</span>
+                              <span className="font-semibold text-ink-900">{verifyResult.record.guardianName}</span>
+                            </div>
+                            <div className="flex items-center">
+                              <span className="text-ink-500 w-16">照片比对：</span>
+                              <span className="inline-flex items-center gap-1 text-danger-700 font-medium">
+                                <XCircle className="w-4 h-4" /> {verifyResult.record.photoMatch ? '已匹配' : '不匹配'}
+                              </span>
+                            </div>
+                            {verifyResult.message && (
+                              <div className="mt-3 p-3 bg-white rounded-xl border border-danger-200">
+                                <p className="text-sm text-danger-700 font-medium">异常原因：{verifyResult.message}</p>
+                                {verifyResult.record.abnormalNote && verifyResult.message !== verifyResult.record.abnormalNote && (
+                                  <p className="text-xs text-danger-600 mt-1">备注：{verifyResult.record.abnormalNote}</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ) : (

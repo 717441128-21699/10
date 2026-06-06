@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express'
-import { leave_records, children, users, bills } from '../db.js'
+import { leave_records, children, users, bills, classes } from '../db.js'
 import { success, error } from '../utils/response.js'
 import { verifyToken } from '../middleware/auth.js'
 import { calculateFeeAdjustment } from '../utils/helpers.js'
@@ -123,12 +123,28 @@ router.put('/:id/approve', (req: Request, res: Response): void => {
     const bill = bills[billIndex]
     const mealItemIndex = bill.items.findIndex(it => it.type === 'meal')
     if (mealItemIndex !== -1) {
-      bill.items[mealItemIndex].deduction = (bill.items[mealItemIndex].deduction || 0) + record.feeAdjustment.totalDeduction
+      bill.items[mealItemIndex].deduction = (bill.items[mealItemIndex].deduction || 0) + record.feeAdjustment.mealFeeDeduction
+    }
+    const tuitionItemIndex = bill.items.findIndex(it => it.type === 'tuition')
+    if (tuitionItemIndex !== -1) {
+      bill.items[tuitionItemIndex].deduction = (bill.items[tuitionItemIndex].deduction || 0) + record.feeAdjustment.tuitionDeduction
     }
     bill.totalAmount = bill.items.reduce((sum, it) => sum + it.amount - (it.deduction || 0), 0)
   }
 
-  res.json(success(record, '已批准'))
+  const child = children.find(c => c.id === record.childId)
+  const classInfo = child?.classId ? classes.find(cls => cls.id === child.classId) : undefined
+  const teacherName = classInfo?.teacherName
+
+  res.json(success({
+    ...record,
+    notifications: {
+      parentNotified: true,
+      teacherNotified: true,
+      teacherName,
+      message: `已通知${teacherName || '班级老师'}：${record.childName} ${record.startDate}至${record.endDate}请假${record.feeAdjustment.days}天，请调整当日活动安排。`,
+    },
+  }, '已批准，已通知家长和老师'))
 })
 
 router.put('/:id/reject', (req: Request, res: Response): void => {

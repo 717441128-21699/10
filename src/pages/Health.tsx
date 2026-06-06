@@ -165,33 +165,39 @@ export default function Health() {
       return;
     }
 
-    const hasAbnormal =
-      temp >= 37.5 ||
-      checkForm.oralCheck === 'abnormal' ||
-      checkForm.handCheck === 'abnormal' ||
-      checkForm.skinCheck === 'abnormal' ||
-      checkForm.spiritCheck === 'abnormal';
-
-    const alertLevel: HealthAlertLevel = temp >= 38
-      ? 'danger'
-      : temp >= 37.5 || hasAbnormal
-      ? 'warning'
-      : 'normal';
+    const childClassId = checkDialog.classId;
 
     try {
-      await healthApi.createMorningCheck({
+      const result = (await healthApi.createMorningCheck({
         childId: checkDialog.id,
         teacherId: user.id,
+        classId: childClassId,
         temperature: temp,
         oralCheck: checkForm.oralCheck,
         handCheck: checkForm.handCheck,
         skinCheck: checkForm.skinCheck,
         spiritCheck: checkForm.spiritCheck,
         note: checkForm.note || undefined,
-      });
+      })) as MorningCheck & {
+        notifications?: {
+          level: 'warning' | 'danger';
+          parentNotified: boolean;
+          principalNotified: boolean;
+          parentNames: string[];
+          principalNames: string[];
+          trackingCreated: boolean;
+          message: string;
+        };
+      };
 
-      if (alertLevel !== 'normal') {
-        showToast('晨检异常，已自动通知家长和园长并创建健康追踪', 'warning');
+      if (result.notifications) {
+        const n = result.notifications;
+        showToast(
+          n.message +
+            (n.parentNames.length ? `（家长：${n.parentNames.join('、')}）` : '') +
+            (n.principalNotified && n.principalNames.length ? `（园长：${n.principalNames.join('、')}）` : ''),
+          n.level === 'danger' ? 'error' : 'warning'
+        );
       } else {
         showToast('晨检记录已保存', 'success');
       }
